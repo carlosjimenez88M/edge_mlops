@@ -1,0 +1,23 @@
+# Capítulo 2 — Regresión (California Housing).
+# Disparo MANUAL desde Actions. Reutiliza el pipeline y lo apunta a chapter-02.
+name: "Capítulo 2 · MLOps (California Housing)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_sweep:
+        description: "Activar el sweep de W&B (60 intentos)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: chapter-02
+  cancel-in-progress: true
+
+jobs:
+  run:
+    uses: ./.github/workflows/_pipeline.yml
+    with:
+      chapter_ref: chapter-02
+      run_sweep: ${{ inputs.run_sweep }}
+    secrets: inherit
