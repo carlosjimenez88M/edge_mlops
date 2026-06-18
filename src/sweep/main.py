@@ -23,7 +23,6 @@ import joblib
 import mlflow
 import mlflow.sklearn
 import pandas as pd
-from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
@@ -31,6 +30,7 @@ from src.common.config import Config, load_config
 from src.common.logging_utils import get_logger, success
 from src.common.mlflow_utils import setup_mlflow
 from src.common.paths import ARTIFACTS_DIR, PROJECT_ROOT
+from src.common.wandb_utils import get_wandb_api_key
 from src.data_preprocessing.transforms import build_preprocessor
 from src.model_competition.models import build_estimator, compute_metrics
 from src.sweep.search_space import build_sweep_config
@@ -64,12 +64,10 @@ def main(config_path: str) -> None:
     best_info = json.loads(best_info_path.read_text(encoding="utf-8"))
     model_name: str = best_info["model_name"]
 
-    load_dotenv(PROJECT_ROOT / ".env")
-    api_key = os.getenv("wandb_api_key") or os.getenv("WANDB_API_KEY")
+    api_key = get_wandb_api_key()
     if not api_key:
-        logger.error("No se encontro wandb_api_key en .env. Imposible correr el sweep.")
+        logger.error("No se encontro WANDB_API_KEY (ni en .env ni en el entorno). Imposible correr el sweep.")
         raise SystemExit(1)
-    os.environ["WANDB_API_KEY"] = api_key
 
     import wandb
 

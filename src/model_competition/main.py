@@ -136,11 +136,45 @@ def main(config_path: str) -> None:
         mlflow.log_artifact(str(ARTIFACTS_DIR / "leaderboard.json"))
         mlflow.log_param("winner", best_name)
 
+    _log_competition_to_wandb(config, task, leaderboard, best_name, winner_metrics)
+
     success(
         logger,
         f"Campeon: {best_name} (test {metric}={winner_metrics[metric]:.4f}, "
         f"{secondary}={winner_metrics[secondary]:.4f})",
     )
+
+
+def _log_competition_to_wandb(config, task, leaderboard, best_name, winner_metrics) -> None:
+    """Registra la competencia en Weights & Biases (si hay API key disponible).
+
+    No-op silencioso si no hay clave, para que las corridas locales sin W&B
+    no fallen. En CI la clave llega por el secret WANDB_API_KEY.
+    """
+    from src.common.wandb_utils import get_wandb_api_key
+
+    if get_wandb_api_key() is None:
+        logger.warning("Sin WANDB_API_KEY -> la competencia se registra solo en MLflow.")
+        return
+
+    import wandb
+
+    run = wandb.init(
+        project=config.sweep.project,
+        entity=config.sweep.entity,
+        name=f"competition-{config.project.experiment_name}",
+        job_type="model_competition",
+        config={"task": task, "models": config.competition.models, "metric": config.competition.metric},
+        reinit=True,
+    )
+    columns = list(leaderboard[0].keys())
+    table = wandb.Table(columns=columns, data=[[r[c] for c in columns] for r in leaderboard])
+    wandb.log({"leaderboard": table})
+    run.summary["winner_model"] = best_name
+    for k, v in winner_metrics.items():
+        run.summary[f"test_{k}"] = v
+    wandb.finish()
+    logger.info("Competencia registrada en W&B (proyecto '%s').", config.sweep.project)
 
 
 if __name__ == "__main__":
