@@ -13,56 +13,48 @@ project:
   experiment_name: chapter-02-california-housing
   task: regression
   random_state: 42
-
 mlflow:
   # El Model Registry de MLflow necesita backend con BD (no file://).
   # sqlite guarda todo en mlflow.db dentro de la Raspberry (cero infra).
   # Para un servidor central usa, p. ej.: http://raspberrypi.local:5000
   tracking_uri: sqlite:///mlflow.db
   registered_model_name: california-housing-regressor
-
 data:
   source: sklearn_california_housing
   target: MedHouseVal
   test_size: 0.2
   raw_path: data/raw/housing.parquet
-
 validation:
-  drift_threshold: 0.05      # p-value KS por debajo de esto => hay drift (warning)
-  reference_fraction: 0.5    # mitad como referencia, mitad como "produccion"
+  drift_threshold: 0.05 # p-value KS por debajo de esto => hay drift (warning)
+  reference_fraction: 0.5 # mitad como referencia, mitad como "produccion"
   report_path: artifacts/validation_report.json
-
 preprocessing:
   numeric_strategy: median
   add_engineered_features: true
   processed_dir: data/processed
-
 competition:
-  metric: rmse               # menor es mejor
+  metric: rmse # menor es mejor
   cv_folds: 5
   models:
     - linear_regression
     - decision_tree
     - random_forest
     - gradient_boosting
-
 sweep:
-  enabled: false             # ponlo en true para correr el sweep REAL de W&B
+  enabled: true
   project: edge-mlops-housing
-  entity: null               # tu usuario/equipo de W&B (opcional)
-  count: 60                  # exactamente 60 intentos, como pediste
+  entity: edge-models-org # tu usuario/equipo de W&B (opcional)
+  count: 60 # exactamente 60 intentos, como pediste
   method: bayes
   metric:
     name: val_rmse
     goal: minimize
-
 register:
   promote: true
   stage: Staging
-  min_r2: 0.6                # gate de calidad: no registrar si R2 < esto
-
+  min_r2: 0.6 # gate de calidad: no registrar si R2 < esto
 orchestrator:
-  env_manager: local         # local = venv raiz compartido (rapido en Pi)
+  env_manager: local # local = venv raiz compartido (rapido en Pi)
   steps:
     - data_load
     - data_validation
@@ -70,7 +62,6 @@ orchestrator:
     - model_competition
     - sweep
     - register
-
 api:
   host: 0.0.0.0
   port: 8000
