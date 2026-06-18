@@ -18,10 +18,10 @@ def resolve_tracking_uri(tracking_uri: str) -> str:
     una ruta relativa apuntaria a una BD distinta por componente.
     """
     if tracking_uri.startswith("sqlite:///") and not tracking_uri.startswith("sqlite:////"):
-        rel = tracking_uri[len("sqlite:///"):]
+        rel = tracking_uri[len("sqlite:///") :]
         return f"sqlite:///{(PROJECT_ROOT / rel).resolve()}"
     if tracking_uri.startswith("file:") and "://" not in tracking_uri:
-        rel = tracking_uri[len("file:"):]
+        rel = tracking_uri[len("file:") :]
         return f"file:{(PROJECT_ROOT / rel).resolve()}"
     return tracking_uri
 

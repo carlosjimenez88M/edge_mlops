@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 class HousingFeatures(BaseModel):
     """Features base del dataset California Housing (un distrito)."""
 
-    MedInc: float = Field(..., description="Ingreso mediano del bloque (decenas de miles USD)", examples=[8.3])
+    MedInc: float = Field(
+        ..., description="Ingreso mediano del bloque (decenas de miles USD)", examples=[8.3]
+    )
     HouseAge: float = Field(..., description="Edad mediana de las casas", examples=[41.0])
     AveRooms: float = Field(..., description="Promedio de habitaciones por hogar", examples=[6.98])
     AveBedrms: float = Field(..., description="Promedio de dormitorios por hogar", examples=[1.02])

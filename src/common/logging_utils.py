@@ -20,11 +20,11 @@ from typing import Final
 _RESET: Final = "\033[0m"
 _BOLD: Final = "\033[1m"
 _COLORS: Final[dict[int, str]] = {
-    logging.DEBUG: "\033[36m",      # cian
-    logging.INFO: "\033[32m",       # verde  -> todo bien
-    logging.WARNING: "\033[33m",    # amarillo -> warning
-    logging.ERROR: "\033[31m",      # rojo   -> fallo
-    logging.CRITICAL: "\033[41m",   # fondo rojo
+    logging.DEBUG: "\033[36m",  # cian
+    logging.INFO: "\033[32m",  # verde  -> todo bien
+    logging.WARNING: "\033[33m",  # amarillo -> warning
+    logging.ERROR: "\033[31m",  # rojo   -> fallo
+    logging.CRITICAL: "\033[41m",  # fondo rojo
 }
 
 _FORMAT: Final = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"

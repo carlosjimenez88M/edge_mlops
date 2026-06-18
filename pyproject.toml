@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "edge-mlops"
 version = "0.2.0"
@@ -54,6 +58,11 @@ dev = [
 [tool.uv]
 # Junta todos los grupos en el venv raiz por defecto.
 default-groups = ["data", "validation", "train", "sweep", "api", "dev"]
+
+# El paquete del proyecto es la carpeta `src` (se instala editable con uv sync),
+# asi `import src.xxx` funciona desde cualquier cwd sin tocar sys.path.
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
 
 [tool.ruff]
 line-length = 100
