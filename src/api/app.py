@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import json
-import sys
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException

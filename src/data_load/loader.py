@@ -17,7 +17,9 @@ def load_california_housing(target_name: str) -> pd.DataFrame:
     return df
 
 
-def load_mnist(target_name: str, sample_size: int | None = None, random_state: int = 42) -> pd.DataFrame:
+def load_mnist(
+    target_name: str, sample_size: int | None = None, random_state: int = 42
+) -> pd.DataFrame:
     """Descarga MNIST (784 features) como DataFrame. Submuestrea si se pide.
 
     `sample_size` es clave en la Raspberry Pi: 70k imagenes son demasiado para

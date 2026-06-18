@@ -32,7 +32,9 @@ REGRESSION_MODELS: dict[str, Callable[[int], object]] = {
 
 CLASSIFICATION_MODELS: dict[str, Callable[[int], object]] = {
     "sgd_classifier": lambda rs: SGDClassifier(random_state=rs),
-    "random_forest": lambda rs: RandomForestClassifier(n_estimators=100, n_jobs=-1, random_state=rs),
+    "random_forest": lambda rs: RandomForestClassifier(
+        n_estimators=100, n_jobs=-1, random_state=rs
+    ),
     "logistic_regression": lambda rs: LogisticRegression(max_iter=200, n_jobs=-1),
 }
 
@@ -86,8 +88,10 @@ def classification_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, 
 
 
 def compute_metrics(task: str, y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
-    return regression_metrics(y_true, y_pred) if task == "regression" else classification_metrics(
-        y_true, y_pred
+    return (
+        regression_metrics(y_true, y_pred)
+        if task == "regression"
+        else classification_metrics(y_true, y_pred)
     )
 
 

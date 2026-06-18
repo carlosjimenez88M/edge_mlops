@@ -6,11 +6,6 @@ metadatos en MLflow. Punto de entrada del MLproject.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-# Permite `from src.common ...` aunque MLflow ejecute desde este directorio.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import click
 import mlflow
