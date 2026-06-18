@@ -40,7 +40,7 @@ jobs:
     name: "✅ Test & lint"
     runs-on: [self-hosted, rpi]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: uv sync --all-groups
       - run: uv run ruff check src orchestrator.py
       - run: uv run pytest -q
@@ -50,7 +50,7 @@ jobs:
     needs: test
     runs-on: [self-hosted, rpi]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { clean: false }
       - run: uv sync --all-groups
       - run: uv run python orchestrator.py --only data_load
@@ -60,11 +60,11 @@ jobs:
     needs: data_load
     runs-on: [self-hosted, rpi]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { clean: false }
       - run: uv sync --all-groups
       - run: uv run python orchestrator.py --only data_validation
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: validation-report
           path: artifacts/validation_report.json
@@ -74,7 +74,7 @@ jobs:
     needs: data_validation
     runs-on: [self-hosted, rpi]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { clean: false }
       - run: uv sync --all-groups
       - run: uv run python orchestrator.py --only data_preprocessing
@@ -84,11 +84,11 @@ jobs:
     needs: data_preprocessing
     runs-on: [self-hosted, rpi]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { clean: false }
       - run: uv sync --all-groups
       - run: uv run python orchestrator.py --only model_competition
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: leaderboard
           path: |
@@ -100,7 +100,7 @@ jobs:
     needs: model_competition
     runs-on: [self-hosted, rpi]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { clean: false }
       - run: uv sync --all-groups
       # Corre siempre; si run_sweep es false, el componente se omite solo (caja verde).
@@ -111,7 +111,7 @@ jobs:
     needs: sweep
     runs-on: [self-hosted, rpi]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { clean: false }
       - run: uv sync --all-groups
       - run: uv run python orchestrator.py --only register
@@ -121,7 +121,7 @@ jobs:
     needs: register
     runs-on: [self-hosted, rpi]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { clean: false }
       - name: Construir y levantar el stack (api + prometheus + grafana)
         run: docker compose up -d --build
@@ -138,7 +138,7 @@ jobs:
     needs: build_deploy
     runs-on: [self-hosted, rpi]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { clean: false }
       - run: uv sync --all-groups
       - name: Smoke test de prediccion (imagen/fila real del test set)
