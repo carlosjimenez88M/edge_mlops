@@ -8,10 +8,7 @@ al stage configurado solo si supera al campeon actual (champion-challenger).
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import click
 import mlflow
@@ -41,7 +38,11 @@ def main(config_path: str) -> None:
 
     r2 = best_info["test_metrics"]["r2"]
     if r2 < config.registry.min_r2:
-        logger.error("Gate de calidad NO superado: R2=%.4f < min_r2=%.4f. No se registra.", r2, config.registry.min_r2)
+        logger.error(
+            "Gate de calidad NO superado: R2=%.4f < min_r2=%.4f. No se registra.",
+            r2,
+            config.registry.min_r2,
+        )
         raise SystemExit(1)
     logger.info("Gate de calidad superado (R2=%.4f >= %.4f).", r2, config.registry.min_r2)
 

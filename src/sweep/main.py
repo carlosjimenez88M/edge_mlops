@@ -13,10 +13,7 @@ from __future__ import annotations
 
 import json
 import os
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import click
 import joblib
@@ -56,7 +53,9 @@ def main(config_path: str) -> None:
 
     forced = os.getenv("EDGE_FORCE_SWEEP") == "1"
     if not config.sweep.enabled and not forced:
-        logger.warning("sweep.enabled=false -> se omite el sweep. Se usa el ganador de la competencia.")
+        logger.warning(
+            "sweep.enabled=false -> se omite el sweep. Se usa el ganador de la competencia."
+        )
         return
 
     best_info_path = ARTIFACTS_DIR / "best_model.json"
@@ -68,13 +67,17 @@ def main(config_path: str) -> None:
 
     api_key = get_wandb_api_key()
     if not api_key:
-        logger.error("No se encontro WANDB_API_KEY (ni en .env ni en el entorno). Imposible correr el sweep.")
+        logger.error(
+            "No se encontro WANDB_API_KEY (ni en .env ni en el entorno). Imposible correr el sweep."
+        )
         raise SystemExit(1)
 
     import wandb
 
     if model_name == "linear_regression":
-        logger.warning("El ganador (linear_regression) no tiene hiperparametros que tunear. Se omite el sweep.")
+        logger.warning(
+            "El ganador (linear_regression) no tiene hiperparametros que tunear. Se omite el sweep."
+        )
         return
 
     x_train, x_val, y_train, y_val = _load_train_val(config)
@@ -87,7 +90,10 @@ def main(config_path: str) -> None:
             estimator.set_params(**params)
             pipeline = Pipeline(
                 steps=[
-                    ("preprocessor", build_preprocessor(numeric_features, config.preprocessing.numeric_strategy)),
+                    (
+                        "preprocessor",
+                        build_preprocessor(numeric_features, config.preprocessing.numeric_strategy),
+                    ),
                     ("model", estimator),
                 ]
             )
@@ -99,7 +105,12 @@ def main(config_path: str) -> None:
         model_name, config.sweep.method, config.sweep.metric.name, config.sweep.metric.goal
     )
     sweep_id = wandb.sweep(sweep_cfg, project=config.sweep.project, entity=config.sweep.entity)
-    logger.info("Sweep %s creado. Lanzando %d intentos sobre '%s'...", sweep_id, config.sweep.count, model_name)
+    logger.info(
+        "Sweep %s creado. Lanzando %d intentos sobre '%s'...",
+        sweep_id,
+        config.sweep.count,
+        model_name,
+    )
     wandb.agent(sweep_id, function=train_one, count=config.sweep.count)
 
     # Recupera la mejor corrida del sweep.
@@ -122,7 +133,10 @@ def main(config_path: str) -> None:
     estimator.set_params(**best_params)
     tuned = Pipeline(
         steps=[
-            ("preprocessor", build_preprocessor(numeric_features, config.preprocessing.numeric_strategy)),
+            (
+                "preprocessor",
+                build_preprocessor(numeric_features, config.preprocessing.numeric_strategy),
+            ),
             ("model", estimator),
         ]
     )
@@ -151,7 +165,10 @@ def main(config_path: str) -> None:
         best_info_path.write_text(json.dumps(best_info, indent=2), encoding="utf-8")
         mlflow.log_artifact(str(best_info_path))
 
-    success(logger, f"Sweep terminado. Modelo afinado test R2={tuned_metrics['r2']:.4f}, RMSE={tuned_metrics['rmse']:.4f}")
+    success(
+        logger,
+        f"Sweep terminado. Modelo afinado test R2={tuned_metrics['r2']:.4f}, RMSE={tuned_metrics['rmse']:.4f}",
+    )
 
 
 if __name__ == "__main__":

@@ -56,7 +56,9 @@ def run_step(step: str, env_manager: str) -> None:
 @click.option("--only", multiple=True, help="Corre solo estos pasos.")
 @click.option("--from", "from_step", default=None, help="Empieza desde este paso.")
 @click.option("--enable-sweep", is_flag=True, help="Fuerza la ejecucion del sweep de W&B.")
-def main(config_path: str, only: tuple[str, ...], from_step: str | None, enable_sweep: bool) -> None:
+def main(
+    config_path: str, only: tuple[str, ...], from_step: str | None, enable_sweep: bool
+) -> None:
     ensure_dirs()
     config = load_config(config_path)
     if enable_sweep:
@@ -73,7 +75,7 @@ def main(config_path: str, only: tuple[str, ...], from_step: str | None, enable_
         if from_step not in steps:
             logger.error("El paso '%s' no esta en la lista. Pasos: %s", from_step, steps)
             raise SystemExit(1)
-        steps = steps[steps.index(from_step):]
+        steps = steps[steps.index(from_step) :]
 
     # Omite el sweep si no esta habilitado, para no gastar corridas.
     if "sweep" in steps and not config.sweep.enabled:

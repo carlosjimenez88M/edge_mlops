@@ -8,10 +8,7 @@ candidato como un run anidado en MLflow y persiste el ganador.
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import click
 import joblib
@@ -64,7 +61,11 @@ def main(config_path: str) -> None:
         metric
     ]
 
-    logger.info("Competencia de %d modelos | metrica de seleccion: %s", len(config.competition.models), metric)
+    logger.info(
+        "Competencia de %d modelos | metrica de seleccion: %s",
+        len(config.competition.models),
+        metric,
+    )
 
     best_name: str | None = None
     best_score = np.inf if lower_better else -np.inf
@@ -75,14 +76,21 @@ def main(config_path: str) -> None:
             with mlflow.start_run(run_name=name, nested=True):
                 pipeline = Pipeline(
                     steps=[
-                        ("preprocessor", build_preprocessor(numeric_features, config.preprocessing.numeric_strategy)),
+                        (
+                            "preprocessor",
+                            build_preprocessor(
+                                numeric_features, config.preprocessing.numeric_strategy
+                            ),
+                        ),
                         ("model", build_estimator(name, config.project.random_state)),
                     ]
                 )
                 cv_scores = cross_val_score(
                     pipeline, x_train, y_train, cv=config.competition.cv_folds, scoring=scoring
                 )
-                cv_metric = float(-cv_scores.mean() if scoring.startswith("neg_") else cv_scores.mean())
+                cv_metric = float(
+                    -cv_scores.mean() if scoring.startswith("neg_") else cv_scores.mean()
+                )
 
                 pipeline.fit(x_train, y_train)
                 test_metrics = regression_metrics(y_test, pipeline.predict(x_test))
@@ -93,8 +101,21 @@ def main(config_path: str) -> None:
                     mlflow.log_metric(f"test_{k}", v)
                 mlflow.sklearn.log_model(pipeline, name="model", serialization_format="cloudpickle")
 
-                leaderboard.append({"model": name, f"cv_{metric}": round(cv_metric, 5), **{f"test_{k}": round(v, 5) for k, v in test_metrics.items()}})
-                logger.info("  %-18s cv_%s=%.4f  test_rmse=%.4f  test_r2=%.4f", name, metric, cv_metric, test_metrics["rmse"], test_metrics["r2"])
+                leaderboard.append(
+                    {
+                        "model": name,
+                        f"cv_{metric}": round(cv_metric, 5),
+                        **{f"test_{k}": round(v, 5) for k, v in test_metrics.items()},
+                    }
+                )
+                logger.info(
+                    "  %-18s cv_%s=%.4f  test_rmse=%.4f  test_r2=%.4f",
+                    name,
+                    metric,
+                    cv_metric,
+                    test_metrics["rmse"],
+                    test_metrics["r2"],
+                )
 
                 if best_name is None or is_better(cv_metric, best_score, metric):
                     best_score, best_name = cv_metric, name
@@ -102,7 +123,10 @@ def main(config_path: str) -> None:
         # Reentrena el ganador en TODO el train y lo persiste como campeon.
         winner = Pipeline(
             steps=[
-                ("preprocessor", build_preprocessor(numeric_features, config.preprocessing.numeric_strategy)),
+                (
+                    "preprocessor",
+                    build_preprocessor(numeric_features, config.preprocessing.numeric_strategy),
+                ),
                 ("model", build_estimator(best_name, config.project.random_state)),
             ]
         )
@@ -123,15 +147,22 @@ def main(config_path: str) -> None:
             "joblib_path": str(model_path),
             "numeric_features": numeric_features,
         }
-        (ARTIFACTS_DIR / "best_model.json").write_text(json.dumps(best_info, indent=2), encoding="utf-8")
-        (ARTIFACTS_DIR / "leaderboard.json").write_text(json.dumps(leaderboard, indent=2), encoding="utf-8")
+        (ARTIFACTS_DIR / "best_model.json").write_text(
+            json.dumps(best_info, indent=2), encoding="utf-8"
+        )
+        (ARTIFACTS_DIR / "leaderboard.json").write_text(
+            json.dumps(leaderboard, indent=2), encoding="utf-8"
+        )
         mlflow.log_artifact(str(ARTIFACTS_DIR / "best_model.json"))
         mlflow.log_artifact(str(ARTIFACTS_DIR / "leaderboard.json"))
         mlflow.log_param("winner", best_name)
 
     _log_competition_to_wandb(config, "regression", leaderboard, best_name, winner_metrics)
 
-    success(logger, f"Campeon: {best_name} (test R2={winner_metrics['r2']:.4f}, RMSE={winner_metrics['rmse']:.4f})")
+    success(
+        logger,
+        f"Campeon: {best_name} (test R2={winner_metrics['r2']:.4f}, RMSE={winner_metrics['rmse']:.4f})",
+    )
 
 
 def _log_competition_to_wandb(config, task, leaderboard, best_name, winner_metrics) -> None:
@@ -153,7 +184,11 @@ def _log_competition_to_wandb(config, task, leaderboard, best_name, winner_metri
         entity=config.sweep.entity,
         name=f"competition-{config.project.experiment_name}",
         job_type="model_competition",
-        config={"task": task, "models": config.competition.models, "metric": config.competition.metric},
+        config={
+            "task": task,
+            "models": config.competition.models,
+            "metric": config.competition.metric,
+        },
         reinit=True,
     )
     columns = list(leaderboard[0].keys())

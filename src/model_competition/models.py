@@ -14,9 +14,7 @@ from sklearn.tree import DecisionTreeRegressor
 MODEL_REGISTRY: dict[str, Callable[[int], object]] = {
     "linear_regression": lambda rs: LinearRegression(),
     "decision_tree": lambda rs: DecisionTreeRegressor(random_state=rs),
-    "random_forest": lambda rs: RandomForestRegressor(
-        n_estimators=200, n_jobs=-1, random_state=rs
-    ),
+    "random_forest": lambda rs: RandomForestRegressor(n_estimators=200, n_jobs=-1, random_state=rs),
     "gradient_boosting": lambda rs: GradientBoostingRegressor(random_state=rs),
 }
 
