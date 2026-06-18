@@ -1,15 +1,22 @@
 # =============================================================================
-# CI/CD que corre en la RASPBERRY PI (self-hosted runner).
-# Flujo: prueba -> entrena/registra -> build -> despliega -> monitorea.
+# CI/CD en la RASPBERRY PI (self-hosted runner) — pipeline por PASOS.
 #
-# DISPARO MANUAL: este workflow solo se ejecuta cuando tú le das "Run workflow"
-# en la pestaña Actions de GitHub (workflow_dispatch). NO corre con push.
-# Puedes elegir la rama y, opcionalmente, activar el sweep de W&B.
+# Cada componente es un JOB independiente: en el grafo de Actions veras una
+# caja por paso, encadenadas, empezando por "Cargar datos" y terminando en
+# monitoreo. El flujo completo:
 #
-# Requisitos en la Pi (ver docs/RASPBERRY_PI_SETUP.md):
-#   - GitHub Actions self-hosted runner con labels: [self-hosted, rpi]
-#   - uv y docker instalados
-#   - secret WANDB_API_KEY (si vas a correr el sweep en CI)
+#   test → data_load → data_validation → data_preprocessing →
+#   model_competition → sweep → register → build_deploy → monitor
+#
+# DISPARO MANUAL: solo corre con "Run workflow" en la pestaña Actions
+# (workflow_dispatch). Eliges la rama y, con run_sweep, activas el sweep W&B.
+#
+# IMPORTANTE (reproducibilidad en la Pi):
+#   - Pensado para UN runner self-hosted en la Raspberry (labels: self-hosted, rpi).
+#   - Los jobs comparten el WORKSPACE del runner (checkout con clean: false), de
+#     modo que los artefactos generados (data/, artifacts/, mlflow.db, mlruns/)
+#     pasan de un paso al siguiente SIN subirlos/bajarlos por la red.
+#   - Requisitos en la Pi: uv y docker. Secret WANDB_API_KEY si usas el sweep.
 # =============================================================================
 name: edge-mlops-cicd
 
@@ -17,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       run_sweep:
-        description: "Activar el sweep de W&B en esta corrida"
+        description: "Activar el sweep de W&B (60 intentos)"
         type: boolean
         default: false
 
@@ -25,62 +32,122 @@ concurrency:
   group: cicd-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  wandb_api_key: ${{ secrets.WANDB_API_KEY }}
+
 jobs:
   test:
+    name: "✅ Test & lint"
     runs-on: [self-hosted, rpi]
     steps:
       - uses: actions/checkout@v4
-      - name: Sincronizar entorno (uv)
-        run: uv sync --all-groups
-      - name: Lint (ruff)
-        run: uv run ruff check src orchestrator.py
-      - name: Tests
-        run: uv run pytest -q
+      - run: uv sync --all-groups
+      - run: uv run ruff check src orchestrator.py
+      - run: uv run pytest -q
 
-  train:
+  data_load:
+    name: "1 · Cargar datos"
     needs: test
     runs-on: [self-hosted, rpi]
-    env:
-      wandb_api_key: ${{ secrets.WANDB_API_KEY }}
     steps:
       - uses: actions/checkout@v4
-      - name: Sincronizar entorno (uv)
-        run: uv sync --all-groups
-      - name: Ejecutar pipeline (orquestador)
-        run: uv run python orchestrator.py ${{ inputs.run_sweep && '--enable-sweep' || '' }}
-      - name: Publicar artefactos
-        uses: actions/upload-artifact@v4
-        with:
-          name: model-artifacts-${{ github.sha }}
-          path: |
-            artifacts/
-            mlflow.db
+        with: { clean: false }
+      - run: uv sync --all-groups
+      - run: uv run python orchestrator.py --only data_load
 
-  deploy:
-    needs: train
+  data_validation:
+    name: "2 · Validar (EDA + drift)"
+    needs: data_load
     runs-on: [self-hosted, rpi]
     steps:
       - uses: actions/checkout@v4
-      - name: Construir y desplegar stack (api + prometheus + grafana)
+        with: { clean: false }
+      - run: uv sync --all-groups
+      - run: uv run python orchestrator.py --only data_validation
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: artifacts/validation_report.json
+
+  data_preprocessing:
+    name: "3 · Preprocesar"
+    needs: data_validation
+    runs-on: [self-hosted, rpi]
+    steps:
+      - uses: actions/checkout@v4
+        with: { clean: false }
+      - run: uv sync --all-groups
+      - run: uv run python orchestrator.py --only data_preprocessing
+
+  model_competition:
+    name: "4 · Competencia de modelos"
+    needs: data_preprocessing
+    runs-on: [self-hosted, rpi]
+    steps:
+      - uses: actions/checkout@v4
+        with: { clean: false }
+      - run: uv sync --all-groups
+      - run: uv run python orchestrator.py --only model_competition
+      - uses: actions/upload-artifact@v4
+        with:
+          name: leaderboard
+          path: |
+            artifacts/best_model.json
+            artifacts/leaderboard.json
+
+  sweep:
+    name: "5 · Sweep W&B (opcional)"
+    needs: model_competition
+    runs-on: [self-hosted, rpi]
+    steps:
+      - uses: actions/checkout@v4
+        with: { clean: false }
+      - run: uv sync --all-groups
+      # Corre siempre; si run_sweep es false, el componente se omite solo (caja verde).
+      - run: uv run python orchestrator.py --only sweep ${{ inputs.run_sweep && '--enable-sweep' || '' }}
+
+  register:
+    name: "6 · Registrar mejor modelo"
+    needs: sweep
+    runs-on: [self-hosted, rpi]
+    steps:
+      - uses: actions/checkout@v4
+        with: { clean: false }
+      - run: uv sync --all-groups
+      - run: uv run python orchestrator.py --only register
+
+  build_deploy:
+    name: "7 · Build + Deploy (Docker)"
+    needs: register
+    runs-on: [self-hosted, rpi]
+    steps:
+      - uses: actions/checkout@v4
+        with: { clean: false }
+      - name: Construir y levantar el stack (api + prometheus + grafana)
         run: docker compose up -d --build
       - name: Esperar a que la API este lista
         run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 40); do
             if curl -sf http://localhost:8000/health; then echo "API arriba"; exit 0; fi
-            sleep 2
+            sleep 3
           done
           echo "La API no respondio a tiempo"; docker compose logs api; exit 1
 
   monitor:
-    needs: deploy
+    name: "8 · Monitorear (API + Prometheus + Grafana)"
+    needs: build_deploy
     runs-on: [self-hosted, rpi]
     steps:
-      - name: Smoke test de prediccion
-        run: |
-          curl -sf -X POST http://localhost:8000/predict \
-            -H "Content-Type: application/json" \
-            -d '{"MedInc":8.3,"HouseAge":41,"AveRooms":6.98,"AveBedrms":1.02,"Population":322,"AveOccup":2.55,"Latitude":37.88,"Longitude":-122.23}'
+      - uses: actions/checkout@v4
+        with: { clean: false }
+      - run: uv sync --all-groups
+      - name: Smoke test de prediccion (imagen/fila real del test set)
+        run: uv run python scripts/smoke_predict.py
       - name: Verificar metricas Prometheus
         run: curl -sf http://localhost:8000/metrics | grep edge_predictions_total
+      - name: Verificar que Prometheus scrapea la API
+        run: |
+          curl -sf "http://localhost:9090/api/v1/targets" | grep -q '"job":"edge-api"' \
+            && echo "Prometheus scrapeando edge-api"
       - name: Verificar Grafana
         run: curl -sf http://localhost:3000/api/health

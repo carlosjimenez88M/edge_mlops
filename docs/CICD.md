@@ -1,13 +1,26 @@
 # CI/CD en la Raspberry Pi
 
-El workflow `.github/workflows/cicd.yml` materializa el ciclo:
+El workflow `.github/workflows/cicd.yml` materializa el ciclo como un **grafo de pasos**:
+cada componente es un job independiente (una caja en el grafo de Actions), encadenados con
+`needs:`.
 
 ```
-Run workflow (manual) → test → train → deploy → monitor
+test → data_load → data_validation → data_preprocessing →
+       model_competition → sweep → register → build_deploy → monitor
 ```
 
 Todo corre en el **runner self-hosted** de la Pi (`runs-on: [self-hosted, rpi]`), así que
 el modelo se entrena y se sirve en el mismo hardware de borde.
+
+> **Por qué se ven como cajas separadas:** GitHub dibuja un nodo por job y los conecta
+> según `needs:`. Como cada paso es su propio job, ves el pipeline avanzar caja por caja,
+> desde "1 · Cargar datos" hasta "8 · Monitorear".
+
+> **Cómo comparten datos entre cajas:** están pensadas para **un único runner en la Pi**.
+> Cada job hace `checkout` con `clean: false`, de modo que los artefactos generados
+> (`data/`, `artifacts/`, `mlflow.db`, `mlruns/`) permanecen en el workspace del runner y
+> el siguiente paso los encuentra — sin subir/bajar gigas por la red. Con varios runners
+> habría que pasar el estado con `upload-artifact`/`download-artifact`.
 
 ## Disparadores
 
@@ -20,18 +33,23 @@ el modelo se entrena y se sirve en el mismo hardware de borde.
 > Para que el botón "Run workflow" aparezca, el workflow debe existir en la rama por
 > defecto (`master`); luego puedes ejecutarlo apuntando a cualquier rama.
 
-## Jobs
+## Jobs (una caja cada uno)
 
-| Job       | Depende de | Qué hace |
-|-----------|------------|----------|
-| `test`    | —          | `uv sync` · `ruff check` · `pytest` |
-| `train`   | `test`     | corre `orchestrator.py` (pipeline completa) y sube `artifacts/` + `mlflow.db` |
-| `deploy`  | `train`    | `docker compose up -d --build` y espera a que `/health` responda |
-| `monitor` | `deploy`   | smoke test de `/predict`, verifica `/metrics` y la salud de Grafana |
+| Job                  | Depende de           | Qué hace |
+|----------------------|----------------------|----------|
+| `test`               | —                    | `uv sync` · `ruff check` · `pytest` |
+| `data_load`          | `test`               | `orchestrator.py --only data_load` (descarga dataset) |
+| `data_validation`    | `data_load`          | EDA + drift; publica `validation_report.json` |
+| `data_preprocessing` | `data_validation`    | feature engineering + split |
+| `model_competition`  | `data_preprocessing` | entrena, compara y elige el campeón; publica `leaderboard.json` |
+| `sweep`              | `model_competition`  | sweep de W&B (si `run_sweep`); si no, se omite solo |
+| `register`           | `sweep`              | gate de calidad + registro + promoción en MLflow |
+| `build_deploy`       | `register`           | `docker compose up -d --build` y espera a `/health` |
+| `monitor`            | `build_deploy`       | smoke `/predict`, `/metrics`, scrape de Prometheus y salud de Grafana |
 
-El **sweep** de W&B se ejecuta dentro de `train` solo si `sweep.enabled: true` en
-`config.yaml` (y existe el secret `WANDB_API_KEY`). Por defecto está apagado para que
-el CI sea rápido y determinista.
+El job `sweep` **siempre aparece** en el grafo: corre el componente, que se omite a sí
+mismo (caja verde, sin trabajo) salvo que marques el input **`run_sweep`** al lanzar el
+workflow (necesita el secret `WANDB_API_KEY`).
 
 ## Probar el flujo completo
 
