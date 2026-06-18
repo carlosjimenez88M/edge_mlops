@@ -29,10 +29,12 @@ class MLflowConfig(BaseModel):
 
 
 class DataConfig(BaseModel):
-    source: Literal["sklearn_california_housing"]
+    source: Literal["sklearn_california_housing", "openml_mnist"]
     target: str
     test_size: float = Field(0.2, gt=0, lt=1)
     raw_path: str
+    # Submuestreo opcional (clave para datasets grandes como MNIST en la Pi).
+    sample_size: int | None = None
 
 
 class ValidationConfig(BaseModel):
@@ -48,7 +50,8 @@ class PreprocessingConfig(BaseModel):
 
 
 class CompetitionConfig(BaseModel):
-    metric: Literal["rmse", "mae", "r2"] = "rmse"
+    # Regresion: rmse, mae, r2. Clasificacion: accuracy, f1_macro.
+    metric: Literal["rmse", "mae", "r2", "accuracy", "f1_macro"] = "rmse"
     cv_folds: int = Field(5, ge=2)
     models: list[str]
 
@@ -77,7 +80,9 @@ class SweepConfig(BaseModel):
 class RegisterConfig(BaseModel):
     promote: bool = True
     stage: Literal["Staging", "Production", "None"] = "Staging"
-    min_r2: float = 0.6
+    # Gate de calidad generico: el modelo debe alcanzar 'gate_min' en 'gate_metric'.
+    gate_metric: str = "r2"
+    gate_min: float = 0.6
 
 
 class OrchestratorConfig(BaseModel):

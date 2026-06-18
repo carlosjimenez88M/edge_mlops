@@ -15,8 +15,11 @@ Cada capítulo se implementa como una **pipeline modular de componentes** (arqui
 `MLproject` y dependencias gestionadas con `uv`, que produce **artefactos** consumidos
 por el siguiente paso. Un **orquestador** encadena los pasos según `config.yaml`.
 
-> **Capítulo actual: 02 — Proyecto end-to-end (California Housing, regresión).**
-> Resultado de referencia: `RandomForest` gana la competencia con **R² ≈ 0.81 / RMSE ≈ 0.50** en test.
+> **Esta rama: Capítulo 03 — Clasificación (MNIST, reconocimiento de dígitos).**
+> Resultado de referencia: `RandomForest` gana la competencia con **accuracy ≈ 0.94** en test
+> (10 000 imágenes submuestreadas; ajustable con `data.sample_size`).
+>
+> *(El Capítulo 02 — California Housing, regresión, R² ≈ 0.81 — vive en `master`/`chapter-02`.)*
 
 ---
 
@@ -101,13 +104,17 @@ docker compose up -d --build
 #   Grafana    → http://localhost:3000  (admin/admin)
 ```
 
-Probar la API:
+Probar la API (MNIST: 784 píxeles 0-255):
 
 ```bash
-curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -d '{
-  "MedInc": 8.3, "HouseAge": 41, "AveRooms": 6.98, "AveBedrms": 1.02,
-  "Population": 322, "AveOccup": 2.55, "Latitude": 37.88, "Longitude": -122.23
-}'
+# Genera un payload desde una imagen real del test set y predice el dígito:
+python - <<'PY'
+import pandas as pd, requests
+row = pd.read_parquet("data/processed/test.parquet").iloc[0]
+pixels = [float(x) for x in row.drop("class").tolist()]
+print("real:", row["class"], "->", requests.post(
+    "http://localhost:8000/predict", json={"pixels": pixels}).json())
+PY
 ```
 
 ### Ejecutar pasos sueltos
@@ -126,13 +133,16 @@ cd src/data_load && uv run python main.py --config ../../config.yaml
 
 | Componente          | Entrada                | Salida (artefactos)                              | Qué hace |
 |---------------------|------------------------|--------------------------------------------------|----------|
-| `data_load`         | —                      | `data/raw/housing.parquet`                       | Descarga California Housing y lo registra en MLflow |
+| `data_load`         | —                      | `data/raw/<dataset>.parquet`                     | Descarga el dataset (MNIST aquí) y lo registra en MLflow |
 | `data_validation`   | dataset crudo          | `validation_report.json`, `histograms.png`       | EDA + drift (test KS, semáforo de warnings) |
-| `data_preprocessing`| dataset crudo          | `train.parquet`, `test.parquet`, `feature_names` | Feature engineering + split |
+| `data_preprocessing`| dataset crudo          | `train.parquet`, `test.parquet`, `feature_names` | Feature engineering + split (estratificado en clasificación) |
 | `model_competition` | splits                 | `best_model.json`, `leaderboard.json`, modelo    | Entrena N modelos, valida (CV + holdout), elige el campeón |
 | `sweep`             | `best_model.json`      | `tuned_model`, `best_params`                      | W&B sweep (60 intentos) sobre la familia ganadora |
 | `register`          | mejor modelo           | versión en MLflow Registry                        | Gate de calidad + promoción champion-challenger |
 | `api`               | modelo registrado      | servicio HTTP                                     | FastAPI `/predict` `/health` `/metrics` |
+
+> Los componentes son **task-aware**: regresión o clasificación según `project.task` en
+> `config.yaml` (catálogo de modelos y métricas en `src/model_competition/models.py`).
 
 ---
 

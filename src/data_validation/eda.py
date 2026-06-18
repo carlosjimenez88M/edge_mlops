@@ -30,11 +30,18 @@ def basic_profile(df: pd.DataFrame, target: str) -> dict[str, Any]:
     }
 
 
-def save_histograms(df: pd.DataFrame, out_path: Path | str) -> Path:
-    """Guarda una grilla de histogramas de las columnas numericas."""
+def save_histograms(df: pd.DataFrame, out_path: Path | str, max_cols: int = 25) -> Path:
+    """Guarda una grilla de histogramas de las columnas numericas.
+
+    Para datasets de alta dimension (p. ej. MNIST con 784 pixeles) se grafican
+    solo las primeras `max_cols` columnas para no generar una figura inmanejable.
+    """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    df.select_dtypes("number").hist(figsize=(14, 10), bins=40)
+    numeric = df.select_dtypes("number")
+    if numeric.shape[1] > max_cols:
+        numeric = numeric.iloc[:, :max_cols]
+    numeric.hist(figsize=(14, 10), bins=40)
     plt.tight_layout()
     plt.savefig(out_path, dpi=90)
     plt.close("all")

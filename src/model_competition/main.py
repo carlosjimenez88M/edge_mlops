@@ -28,10 +28,11 @@ from src.common.mlflow_utils import setup_mlflow
 from src.common.paths import ARTIFACTS_DIR, PROJECT_ROOT
 from src.data_preprocessing.transforms import build_preprocessor
 from src.model_competition.models import (
+    CV_SCORING,
     METRIC_LOWER_IS_BETTER,
     build_estimator,
+    compute_metrics,
     is_better,
-    regression_metrics,
 )
 
 logger = get_logger("model_competition")
@@ -58,13 +59,16 @@ def main(config_path: str) -> None:
 
     x_train, y_train, x_test, y_test = _load_splits(config)
     numeric_features = list(x_train.select_dtypes("number").columns)
+    task = config.project.task
     metric = config.competition.metric
     lower_better = METRIC_LOWER_IS_BETTER[metric]
-    scoring = {"rmse": "neg_root_mean_squared_error", "mae": "neg_mean_absolute_error", "r2": "r2"}[
-        metric
-    ]
+    scoring = CV_SCORING[metric]
+    secondary = "r2" if task == "regression" else "f1_macro"
 
-    logger.info("Competencia de %d modelos | metrica de seleccion: %s", len(config.competition.models), metric)
+    logger.info(
+        "Competencia de %d modelos (%s) | metrica de seleccion: %s",
+        len(config.competition.models), task, metric,
+    )
 
     best_name: str | None = None
     best_score = np.inf if lower_better else -np.inf
@@ -76,7 +80,7 @@ def main(config_path: str) -> None:
                 pipeline = Pipeline(
                     steps=[
                         ("preprocessor", build_preprocessor(numeric_features, config.preprocessing.numeric_strategy)),
-                        ("model", build_estimator(name, config.project.random_state)),
+                        ("model", build_estimator(name, task, config.project.random_state)),
                     ]
                 )
                 cv_scores = cross_val_score(
@@ -85,7 +89,7 @@ def main(config_path: str) -> None:
                 cv_metric = float(-cv_scores.mean() if scoring.startswith("neg_") else cv_scores.mean())
 
                 pipeline.fit(x_train, y_train)
-                test_metrics = regression_metrics(y_test, pipeline.predict(x_test))
+                test_metrics = compute_metrics(task, y_test, pipeline.predict(x_test))
 
                 mlflow.log_param("model", name)
                 mlflow.log_metric(f"cv_{metric}", cv_metric)
@@ -94,7 +98,10 @@ def main(config_path: str) -> None:
                 mlflow.sklearn.log_model(pipeline, name="model", serialization_format="cloudpickle")
 
                 leaderboard.append({"model": name, f"cv_{metric}": round(cv_metric, 5), **{f"test_{k}": round(v, 5) for k, v in test_metrics.items()}})
-                logger.info("  %-18s cv_%s=%.4f  test_rmse=%.4f  test_r2=%.4f", name, metric, cv_metric, test_metrics["rmse"], test_metrics["r2"])
+                logger.info(
+                    "  %-20s cv_%s=%.4f  test_%s=%.4f  test_%s=%.4f",
+                    name, metric, cv_metric, metric, test_metrics[metric], secondary, test_metrics[secondary],
+                )
 
                 if best_name is None or is_better(cv_metric, best_score, metric):
                     best_score, best_name = cv_metric, name
@@ -103,11 +110,11 @@ def main(config_path: str) -> None:
         winner = Pipeline(
             steps=[
                 ("preprocessor", build_preprocessor(numeric_features, config.preprocessing.numeric_strategy)),
-                ("model", build_estimator(best_name, config.project.random_state)),
+                ("model", build_estimator(best_name, task, config.project.random_state)),
             ]
         )
         winner.fit(x_train, y_train)
-        winner_metrics = regression_metrics(y_test, winner.predict(x_test))
+        winner_metrics = compute_metrics(task, y_test, winner.predict(x_test))
 
         model_path = ARTIFACTS_DIR / "winner_model.joblib"
         joblib.dump(winner, model_path)
@@ -129,7 +136,11 @@ def main(config_path: str) -> None:
         mlflow.log_artifact(str(ARTIFACTS_DIR / "leaderboard.json"))
         mlflow.log_param("winner", best_name)
 
-    success(logger, f"Campeon: {best_name} (test R2={winner_metrics['r2']:.4f}, RMSE={winner_metrics['rmse']:.4f})")
+    success(
+        logger,
+        f"Campeon: {best_name} (test {metric}={winner_metrics[metric]:.4f}, "
+        f"{secondary}={winner_metrics[secondary]:.4f})",
+    )
 
 
 if __name__ == "__main__":

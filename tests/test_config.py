@@ -11,8 +11,9 @@ from src.common.paths import CONFIG_PATH
 def test_load_default_config() -> None:
     config = load_config(CONFIG_PATH)
     assert isinstance(config, Config)
-    assert config.project.task == "regression"
+    assert config.project.task == "classification"
     assert config.sweep.count == 60
+    assert config.data.source == "openml_mnist"
     assert "model_competition" in config.orchestrator.steps
 
 

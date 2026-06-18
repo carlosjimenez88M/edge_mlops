@@ -26,6 +26,17 @@ SEARCH_SPACES: dict[str, dict[str, Any]] = {
     },
     # LinearRegression no tiene hiperparametros relevantes que tunear.
     "linear_regression": {},
+    # --- Clasificacion (cap. 3, MNIST) ---
+    "sgd_classifier": {
+        "alpha": {"distribution": "log_uniform_values", "min": 1e-6, "max": 1e-1},
+        "penalty": {"values": ["l2", "l1", "elasticnet"]},
+        "loss": {"values": ["hinge", "log_loss", "modified_huber"]},
+        "max_iter": {"distribution": "int_uniform", "min": 5, "max": 50},
+    },
+    "logistic_regression": {
+        "C": {"distribution": "log_uniform_values", "min": 1e-3, "max": 1e2},
+        "max_iter": {"distribution": "int_uniform", "min": 100, "max": 400},
+    },
 }
 
 

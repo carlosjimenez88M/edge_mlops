@@ -22,10 +22,8 @@ import click
 import joblib
 import mlflow
 import mlflow.sklearn
-import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
-from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
@@ -34,7 +32,7 @@ from src.common.logging_utils import get_logger, success
 from src.common.mlflow_utils import setup_mlflow
 from src.common.paths import ARTIFACTS_DIR, PROJECT_ROOT
 from src.data_preprocessing.transforms import build_preprocessor
-from src.model_competition.models import build_estimator, regression_metrics
+from src.model_competition.models import build_estimator, compute_metrics
 from src.sweep.search_space import build_sweep_config
 
 logger = get_logger("sweep")
@@ -81,11 +79,13 @@ def main(config_path: str) -> None:
 
     x_train, x_val, y_train, y_val = _load_train_val(config)
     numeric_features = list(x_train.select_dtypes("number").columns)
+    task = config.project.task
+    base_metric = config.competition.metric  # metrica que se optimiza en el sweep
 
     def train_one() -> None:
         with wandb.init() as run:
             params = {k: (None if v == "None" else v) for k, v in dict(run.config).items()}
-            estimator = build_estimator(model_name, config.project.random_state)
+            estimator = build_estimator(model_name, task, config.project.random_state)
             estimator.set_params(**params)
             pipeline = Pipeline(
                 steps=[
@@ -94,8 +94,8 @@ def main(config_path: str) -> None:
                 ]
             )
             pipeline.fit(x_train, y_train)
-            val_rmse = float(np.sqrt(mean_squared_error(y_val, pipeline.predict(x_val))))
-            wandb.log({config.sweep.metric.name: val_rmse})
+            score = compute_metrics(task, y_val, pipeline.predict(x_val))[base_metric]
+            wandb.log({config.sweep.metric.name: score})
 
     sweep_cfg = build_sweep_config(
         model_name, config.sweep.method, config.sweep.metric.name, config.sweep.metric.goal
@@ -120,7 +120,7 @@ def main(config_path: str) -> None:
     x_full, y_full = full.drop(columns=[target]), full[target]
     x_test, y_test = test.drop(columns=[target]), test[target]
 
-    estimator = build_estimator(model_name, config.project.random_state)
+    estimator = build_estimator(model_name, task, config.project.random_state)
     estimator.set_params(**best_params)
     tuned = Pipeline(
         steps=[
@@ -129,7 +129,7 @@ def main(config_path: str) -> None:
         ]
     )
     tuned.fit(x_full, y_full)
-    tuned_metrics = regression_metrics(y_test, tuned.predict(x_test))
+    tuned_metrics = compute_metrics(task, y_test, tuned.predict(x_test))
 
     with mlflow.start_run(run_name="sweep_best") as run:
         mlflow.log_params(best_params)
@@ -153,7 +153,8 @@ def main(config_path: str) -> None:
         best_info_path.write_text(json.dumps(best_info, indent=2), encoding="utf-8")
         mlflow.log_artifact(str(best_info_path))
 
-    success(logger, f"Sweep terminado. Modelo afinado test R2={tuned_metrics['r2']:.4f}, RMSE={tuned_metrics['rmse']:.4f}")
+    metrics_str = ", ".join(f"{k}={v:.4f}" for k, v in tuned_metrics.items())
+    success(logger, f"Sweep terminado. Modelo afinado: {metrics_str}")
 
 
 if __name__ == "__main__":

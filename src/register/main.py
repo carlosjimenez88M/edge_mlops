@@ -22,7 +22,7 @@ from src.common.config import load_config
 from src.common.logging_utils import get_logger, success
 from src.common.mlflow_utils import setup_mlflow
 from src.common.paths import ARTIFACTS_DIR, PROJECT_ROOT
-from src.register.registry import promote_if_better, rmse_of_stage_model
+from src.register.registry import metric_of_stage_model, promote_if_better
 
 logger = get_logger("register")
 
@@ -39,11 +39,15 @@ def main(config_path: str) -> None:
         raise SystemExit(1)
     best_info = json.loads(best_info_path.read_text(encoding="utf-8"))
 
-    r2 = best_info["test_metrics"]["r2"]
-    if r2 < config.registry.min_r2:
-        logger.error("Gate de calidad NO superado: R2=%.4f < min_r2=%.4f. No se registra.", r2, config.registry.min_r2)
+    gate_metric = config.registry.gate_metric
+    gate_min = config.registry.gate_min
+    score = best_info["test_metrics"][gate_metric]
+    if score < gate_min:
+        logger.error(
+            "Gate de calidad NO superado: %s=%.4f < %.4f. No se registra.", gate_metric, score, gate_min
+        )
         raise SystemExit(1)
-    logger.info("Gate de calidad superado (R2=%.4f >= %.4f).", r2, config.registry.min_r2)
+    logger.info("Gate de calidad superado (%s=%.4f >= %.4f).", gate_metric, score, gate_min)
 
     model_name = config.mlflow.registered_model_name
     result = mlflow.register_model(model_uri=best_info["model_uri"], name=model_name)
@@ -53,29 +57,32 @@ def main(config_path: str) -> None:
         success(logger, f"Modelo registrado como version {result.version} (sin promocion).")
         return
 
-    # Champion-challenger sobre el test set.
+    # Champion-challenger sobre el test set, usando la metrica de seleccion.
+    task = config.project.task
+    metric = config.competition.metric
     test = pd.read_parquet(PROJECT_ROOT / config.preprocessing.processed_dir / "test.parquet")
     target = config.data.target
     x_test, y_test = test.drop(columns=[target]), test[target]
-    challenger_rmse = best_info["test_metrics"]["rmse"]
+    challenger = best_info["test_metrics"][metric]
 
     client = MlflowClient()
-    champion_rmse = rmse_of_stage_model(client, model_name, config.registry.stage, x_test, y_test)
+    champion = metric_of_stage_model(
+        client, model_name, config.registry.stage, task, metric, x_test, y_test
+    )
 
     promoted = promote_if_better(
-        client, model_name, result.version, config.registry.stage, challenger_rmse, champion_rmse
+        client, model_name, result.version, config.registry.stage, metric, challenger, champion
     )
     if promoted:
         success(
             logger,
             f"Version {result.version} promovida a {config.registry.stage} "
-            f"(challenger RMSE={challenger_rmse:.4f} vs champion={champion_rmse}).",
+            f"(challenger {metric}={challenger:.4f} vs champion={champion}).",
         )
     else:
         logger.warning(
-            "El challenger (RMSE=%.4f) NO supera al campeon (RMSE=%.4f). No se promueve.",
-            challenger_rmse,
-            champion_rmse,
+            "El challenger (%s=%.4f) NO supera al campeon (%.4f). No se promueve.",
+            metric, challenger, champion,
         )
 
 

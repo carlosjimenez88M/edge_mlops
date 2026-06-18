@@ -2,67 +2,66 @@
 # Configuracion de la corrida MLOps (unica fuente de verdad).
 # Validada por src/common/config.py (Pydantic). Si algo falta -> falla en rojo.
 #
-# Este config corresponde al CAPITULO 2 de Geron: proyecto end-to-end de
-# regresion sobre el dataset California Housing. Para un capitulo nuevo,
-# copia este archivo en tu rama chapter-XX y ajusta los valores.
+# CAPITULO 3 de Geron: Clasificacion sobre MNIST (reconocimiento de digitos).
 # =============================================================================
 
 project:
   name: edge-mlops
-  chapter: "02"
-  experiment_name: chapter-02-california-housing
-  task: regression
+  chapter: "03"
+  experiment_name: chapter-03-mnist
+  task: classification
   random_state: 42
 
 mlflow:
   # El Model Registry de MLflow necesita backend con BD (no file://).
-  # sqlite guarda todo en mlflow.db dentro de la Raspberry (cero infra).
-  # Para un servidor central usa, p. ej.: http://raspberrypi.local:5000
   tracking_uri: sqlite:///mlflow.db
-  registered_model_name: california-housing-regressor
+  registered_model_name: mnist-digit-classifier
 
 data:
-  source: sklearn_california_housing
-  target: MedHouseVal
+  source: openml_mnist
+  target: class
   test_size: 0.2
-  raw_path: data/raw/housing.parquet
+  raw_path: data/raw/mnist.parquet
+  # Submuestreo: 70k imagenes son demasiado para la Pi. 10k da buen balance
+  # velocidad/exactitud. Pon null para usar el MNIST completo.
+  sample_size: 10000
 
 validation:
-  drift_threshold: 0.05      # p-value KS por debajo de esto => hay drift (warning)
-  reference_fraction: 0.5    # mitad como referencia, mitad como "produccion"
+  drift_threshold: 0.05
+  reference_fraction: 0.5
   report_path: artifacts/validation_report.json
 
 preprocessing:
   numeric_strategy: median
-  add_engineered_features: true
+  add_engineered_features: false   # las imagenes no llevan feature engineering
   processed_dir: data/processed
 
 competition:
-  metric: rmse               # menor es mejor
-  cv_folds: 5
+  metric: accuracy                 # mas es mejor
+  cv_folds: 3                      # 3 folds para ir mas rapido en la Pi
   models:
-    - linear_regression
-    - decision_tree
+    - sgd_classifier
     - random_forest
-    - gradient_boosting
+    - logistic_regression
 
 sweep:
-  enabled: false             # ponlo en true para correr el sweep REAL de W&B
-  project: edge-mlops-housing
-  entity: null               # tu usuario/equipo de W&B (opcional)
-  count: 60                  # exactamente 60 intentos, como pediste
+  enabled: false                   # actívalo con --enable-sweep o el input del Action
+  project: edge-mlops-mnist
+  entity: null
+  count: 60                        # exactamente 60 intentos
   method: bayes
   metric:
-    name: val_rmse
-    goal: minimize
+    name: val_accuracy
+    goal: maximize
 
 register:
   promote: true
   stage: Staging
-  min_r2: 0.6                # gate de calidad: no registrar si R2 < esto
+  gate_metric: accuracy            # gate de calidad generico
+  gate_min: 0.90
 
 orchestrator:
-  env_manager: local         # local = venv raiz compartido (rapido en Pi)
+  env_manager: local
   steps:
     - data_load
     - data_validation
@@ -74,4 +73,4 @@ orchestrator:
 api:
   host: 0.0.0.0
   port: 8000
-  model_uri: models:/california-housing-regressor/Staging
+  model_uri: models:/mnist-digit-classifier/Staging

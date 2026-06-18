@@ -1,11 +1,13 @@
-"""API FastAPI para servir el modelo + metricas Prometheus."""
+"""API FastAPI para servir el modelo + metricas Prometheus (cap. 3: MNIST)."""
 
 from __future__ import annotations
 
+import json
 import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -14,11 +16,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
-from src.api.model_loader import ModelHandle, load_model
-from src.api.schemas import HealthResponse, HousingFeatures, Prediction
+from src.api.model_loader import load_model
+from src.api.schemas import DigitImage, HealthResponse, Prediction
 from src.common.config import load_config
 from src.common.logging_utils import get_logger
-from src.data_preprocessing.transforms import engineer_features
+from src.common.paths import PROJECT_ROOT
 
 logger = get_logger("api")
 
@@ -26,9 +28,16 @@ logger = get_logger("api")
 PREDICTIONS = Counter("edge_predictions_total", "Total de predicciones servidas")
 PRED_ERRORS = Counter("edge_prediction_errors_total", "Total de predicciones fallidas")
 LATENCY = Histogram("edge_prediction_latency_seconds", "Latencia de prediccion (s)")
-LAST_VALUE = Gauge("edge_last_prediction_value", "Ultimo valor predicho")
+LAST_VALUE = Gauge("edge_last_prediction_value", "Ultimo valor predicho (digito)")
 
-_state: dict[str, ModelHandle] = {}
+_state: dict[str, Any] = {}
+
+
+def _load_feature_names(config) -> list[str]:
+    path = PROJECT_ROOT / config.preprocessing.processed_dir / "feature_names.json"
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return [f"pixel{i + 1}" for i in range(784)]  # fallback al esquema MNIST de openml
 
 
 @asynccontextmanager
@@ -37,11 +46,12 @@ async def lifespan(app: FastAPI):
     _state["handle"] = load_model(
         config.api.model_uri, config.mlflow.tracking_uri, config.mlflow.registered_model_name
     )
+    _state["feature_names"] = _load_feature_names(config)
     yield
     _state.clear()
 
 
-app = FastAPI(title="edge_mlops - California Housing API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="edge_mlops - MNIST Classifier API", version="0.3.0", lifespan=lifespan)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -60,15 +70,22 @@ def metrics() -> Response:
 
 
 @app.post("/predict", response_model=Prediction)
-def predict(features: HousingFeatures) -> Prediction:
+def predict(image: DigitImage) -> Prediction:
     handle = _state.get("handle")
     if handle is None:
         raise HTTPException(status_code=503, detail="Modelo no cargado")
 
+    feature_names: list[str] = _state["feature_names"]
+    if len(image.pixels) != len(feature_names):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Se esperaban {len(feature_names)} pixeles, llegaron {len(image.pixels)}.",
+        )
+
     start = time.perf_counter()
     try:
-        row = engineer_features(pd.DataFrame([features.model_dump()]))
-        value = float(handle.model.predict(row)[0])
+        row = pd.DataFrame([dict(zip(feature_names, image.pixels))])
+        label = str(handle.model.predict(row)[0])
     except Exception as exc:  # noqa: BLE001
         PRED_ERRORS.inc()
         logger.error("Fallo la prediccion: %s", exc)
@@ -77,9 +94,12 @@ def predict(features: HousingFeatures) -> Prediction:
         LATENCY.observe(time.perf_counter() - start)
 
     PREDICTIONS.inc()
-    LAST_VALUE.set(value)
-    return Prediction(
-        predicted_median_house_value=value,
-        model_stage=handle.stage,
-        model_name=handle.name,
-    )
+    try:
+        LAST_VALUE.set(float(label))
+    except ValueError:
+        pass
+    return Prediction(predicted_label=label, model_stage=handle.stage, model_name=handle.name)
+
+
+if __name__ == "__main__":
+    pass

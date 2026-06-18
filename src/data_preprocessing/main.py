@@ -41,10 +41,13 @@ def main(config_path: str) -> None:
             logger.info("Features de ingenieria agregadas. Columnas: %d", df.shape[1])
 
         target = config.data.target
+        # En clasificacion estratificamos por la clase para conservar proporciones.
+        stratify = df[target] if config.project.task == "classification" else None
         train_df, test_df = train_test_split(
             df,
             test_size=config.data.test_size,
             random_state=config.project.random_state,
+            stratify=stratify,
         )
 
         processed_dir = PROJECT_ROOT / config.preprocessing.processed_dir

@@ -19,7 +19,7 @@ from src.common.config import load_config
 from src.common.logging_utils import get_logger, success
 from src.common.mlflow_utils import setup_mlflow
 from src.common.paths import PROJECT_ROOT
-from src.data_load.loader import load_california_housing, save_raw
+from src.data_load.loader import load_dataset, save_raw
 
 logger = get_logger("data_load")
 
@@ -32,7 +32,12 @@ def main(config_path: str) -> None:
 
     logger.info("Descargando dataset '%s'...", config.data.source)
     with mlflow.start_run(run_name="data_load"):
-        df = load_california_housing(config.data.target)
+        df = load_dataset(
+            config.data.source,
+            config.data.target,
+            sample_size=config.data.sample_size,
+            random_state=config.project.random_state,
+        )
 
         if df.isna().any().any():
             logger.warning("El dataset crudo contiene valores nulos.")

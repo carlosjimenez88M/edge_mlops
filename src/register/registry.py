@@ -2,23 +2,29 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 from mlflow.tracking import MlflowClient
-from sklearn.metrics import mean_squared_error
+
+from src.model_competition.models import compute_metrics, is_better
 
 
-def rmse_of_stage_model(
-    client: MlflowClient, model_name: str, stage: str, x_test: pd.DataFrame, y_test: pd.Series
+def metric_of_stage_model(
+    client: MlflowClient,
+    model_name: str,
+    stage: str,
+    task: str,
+    metric: str,
+    x_test: pd.DataFrame,
+    y_test: pd.Series,
 ) -> float | None:
-    """RMSE del modelo actualmente en `stage`, o None si no hay ninguno."""
+    """Valor de `metric` del modelo actualmente en `stage`, o None si no hay."""
     import mlflow.sklearn
 
     versions = client.get_latest_versions(model_name, stages=[stage])
     if not versions:
         return None
     model = mlflow.sklearn.load_model(f"models:/{model_name}/{stage}")
-    return float(np.sqrt(mean_squared_error(y_test, model.predict(x_test))))
+    return compute_metrics(task, y_test, model.predict(x_test))[metric]
 
 
 def promote_if_better(
@@ -26,11 +32,12 @@ def promote_if_better(
     model_name: str,
     version: str,
     stage: str,
-    challenger_rmse: float,
-    champion_rmse: float | None,
+    metric: str,
+    challenger_score: float,
+    champion_score: float | None,
 ) -> bool:
     """Promueve el challenger al stage si mejora (o si no hay campeon)."""
-    if champion_rmse is None or challenger_rmse < champion_rmse:
+    if champion_score is None or is_better(challenger_score, champion_score, metric):
         client.transition_model_version_stage(
             name=model_name,
             version=version,

@@ -1,27 +1,32 @@
-"""Esquemas Pydantic de entrada/salida de la API."""
+"""Esquemas Pydantic de entrada/salida de la API (cap. 3: MNIST)."""
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+N_PIXELS = 784  # MNIST: imagen 28x28 aplanada
 
 
-class HousingFeatures(BaseModel):
-    """Features base del dataset California Housing (un distrito)."""
+class DigitImage(BaseModel):
+    """Una imagen MNIST como vector de 784 intensidades de pixel (0-255)."""
 
-    MedInc: float = Field(..., description="Ingreso mediano del bloque (decenas de miles USD)", examples=[8.3])
-    HouseAge: float = Field(..., description="Edad mediana de las casas", examples=[41.0])
-    AveRooms: float = Field(..., description="Promedio de habitaciones por hogar", examples=[6.98])
-    AveBedrms: float = Field(..., description="Promedio de dormitorios por hogar", examples=[1.02])
-    Population: float = Field(..., description="Poblacion del bloque", examples=[322.0])
-    AveOccup: float = Field(..., description="Ocupantes promedio por hogar", examples=[2.55])
-    Latitude: float = Field(..., examples=[37.88])
-    Longitude: float = Field(..., examples=[-122.23])
+    pixels: list[float] = Field(
+        ...,
+        description="Vector de 784 pixeles (28x28) con valores 0-255.",
+        min_length=N_PIXELS,
+        max_length=N_PIXELS,
+    )
+
+    @field_validator("pixels")
+    @classmethod
+    def _check_range(cls, v: list[float]) -> list[float]:
+        if any(p < 0 or p > 255 for p in v):
+            raise ValueError("Cada pixel debe estar en el rango [0, 255].")
+        return v
 
 
 class Prediction(BaseModel):
-    predicted_median_house_value: float = Field(
-        ..., description="Valor mediano de vivienda predicho (en cientos de miles de USD)"
-    )
+    predicted_label: str = Field(..., description="Digito predicho (0-9).")
     model_stage: str
     model_name: str
 
