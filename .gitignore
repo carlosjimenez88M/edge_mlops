@@ -228,3 +228,21 @@ data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+
+# Caches de herramientas
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Logs y temporales
+*.log
+.DS_Store
+
+# Docker
+.docker/
+
+# Claude Code
+.claude/
+.claude

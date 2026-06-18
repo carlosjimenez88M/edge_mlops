@@ -42,6 +42,10 @@ def load_model(model_uri: str, tracking_uri: str, model_name: str) -> ModelHandl
     info = json.loads(best_info_path.read_text(encoding="utf-8"))
     import joblib
 
-    model = joblib.load(Path(info["joblib_path"]))
-    logger.info("Modelo cargado desde joblib: %s", info["joblib_path"])
+    # best_model.json guarda una ruta absoluta del host; dentro del contenedor
+    # se resuelve por nombre de archivo bajo ARTIFACTS_DIR (que va montado).
+    candidate = ARTIFACTS_DIR / Path(info["joblib_path"]).name
+    model_file = candidate if candidate.exists() else Path(info["joblib_path"])
+    model = joblib.load(model_file)
+    logger.info("Modelo cargado desde joblib: %s", model_file)
     return ModelHandle(model, model_name, "local-joblib")
