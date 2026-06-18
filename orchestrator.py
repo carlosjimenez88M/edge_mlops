@@ -13,6 +13,7 @@ Uso:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import click
@@ -54,9 +55,15 @@ def run_step(step: str, env_manager: str) -> None:
 @click.option("--config", "config_path", default=str(CONFIG_PATH))
 @click.option("--only", multiple=True, help="Corre solo estos pasos.")
 @click.option("--from", "from_step", default=None, help="Empieza desde este paso.")
-def main(config_path: str, only: tuple[str, ...], from_step: str | None) -> None:
+@click.option("--enable-sweep", is_flag=True, help="Fuerza la ejecucion del sweep de W&B.")
+def main(config_path: str, only: tuple[str, ...], from_step: str | None, enable_sweep: bool) -> None:
     ensure_dirs()
     config = load_config(config_path)
+    if enable_sweep:
+        config.sweep.enabled = True
+        # Se propaga al subproceso del componente sweep (que relee config.yaml).
+        os.environ["EDGE_FORCE_SWEEP"] = "1"
+        logger.info("Sweep forzado por --enable-sweep.")
     setup_mlflow(config)
 
     steps = list(config.orchestrator.steps)

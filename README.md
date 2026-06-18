@@ -164,8 +164,10 @@ dashboard ya provisionado (*Inference Monitoring*).
 ## 🔁 CI/CD en la Raspberry Pi
 
 El workflow `.github/workflows/cicd.yml` corre en un **runner self-hosted** en la Pi y
-ejecuta el ciclo completo en cada push: **test → train (pipeline) → build → deploy → monitor**.
-Configuración del runner en [`docs/RASPBERRY_PI_SETUP.md`](docs/RASPBERRY_PI_SETUP.md).
+ejecuta el ciclo completo de forma **manual** (botón *Run workflow* en la pestaña Actions,
+`workflow_dispatch` — **no por push**): **test → train (pipeline) → build → deploy → monitor**.
+Eliges la rama y si se corre el sweep. Configuración del runner en
+[`docs/RASPBERRY_PI_SETUP.md`](docs/RASPBERRY_PI_SETUP.md).
 
 ## 📚 Trabajar todos los capítulos
 

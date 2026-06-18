@@ -1,6 +1,10 @@
 # =============================================================================
 # CI/CD que corre en la RASPBERRY PI (self-hosted runner).
-# Flujo: push -> prueba -> entrena/registra -> build -> despliega -> monitorea.
+# Flujo: prueba -> entrena/registra -> build -> despliega -> monitorea.
+#
+# DISPARO MANUAL: este workflow solo se ejecuta cuando tú le das "Run workflow"
+# en la pestaña Actions de GitHub (workflow_dispatch). NO corre con push.
+# Puedes elegir la rama y, opcionalmente, activar el sweep de W&B.
 #
 # Requisitos en la Pi (ver docs/RASPBERRY_PI_SETUP.md):
 #   - GitHub Actions self-hosted runner con labels: [self-hosted, rpi]
@@ -10,9 +14,12 @@
 name: edge-mlops-cicd
 
 on:
-  push:
-    branches: ["master", "main", "chapter-*"]
   workflow_dispatch:
+    inputs:
+      run_sweep:
+        description: "Activar el sweep de W&B en esta corrida"
+        type: boolean
+        default: false
 
 concurrency:
   group: cicd-${{ github.ref }}
@@ -40,7 +47,7 @@ jobs:
       - name: Sincronizar entorno (uv)
         run: uv sync --all-groups
       - name: Ejecutar pipeline (orquestador)
-        run: uv run python orchestrator.py
+        run: uv run python orchestrator.py ${{ inputs.run_sweep && '--enable-sweep' || '' }}
       - name: Publicar artefactos
         uses: actions/upload-artifact@v4
         with:

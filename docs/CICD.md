@@ -3,7 +3,7 @@
 El workflow `.github/workflows/cicd.yml` materializa el ciclo:
 
 ```
-push → test → train → deploy → monitor
+Run workflow (manual) → test → train → deploy → monitor
 ```
 
 Todo corre en el **runner self-hosted** de la Pi (`runs-on: [self-hosted, rpi]`), así que
@@ -11,9 +11,14 @@ el modelo se entrena y se sirve en el mismo hardware de borde.
 
 ## Disparadores
 
-- `push` a `master`, `main` o cualquier rama `chapter-*`.
-- `workflow_dispatch` (ejecución manual desde la pestaña Actions).
+- **Solo manual** (`workflow_dispatch`): se ejecuta cuando le das **"Run workflow"** en la
+  pestaña **Actions** de GitHub. **No corre con push.**
+- Al lanzarlo eliges la **rama** (por ejemplo `chapter-03`) y, con el input `run_sweep`,
+  decides si se ejecuta el sweep de W&B en esa corrida.
 - `concurrency` cancela corridas anteriores de la misma rama.
+
+> Para que el botón "Run workflow" aparezca, el workflow debe existir en la rama por
+> defecto (`master`); luego puedes ejecutarlo apuntando a cualquier rama.
 
 ## Jobs
 

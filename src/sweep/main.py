@@ -54,7 +54,8 @@ def _load_train_val(config: Config):
 def main(config_path: str) -> None:
     config = load_config(config_path)
 
-    if not config.sweep.enabled:
+    forced = os.getenv("EDGE_FORCE_SWEEP") == "1"
+    if not config.sweep.enabled and not forced:
         logger.warning("sweep.enabled=false -> se omite el sweep. Se usa el ganador de la competencia.")
         return
 
