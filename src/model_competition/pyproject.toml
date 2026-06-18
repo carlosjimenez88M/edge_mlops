@@ -1,0 +1,17 @@
+[project]
+name = "edge-mlops-model-competition"
+version = "0.2.0"
+description = "Componente model_competition: entrena, compara y selecciona el mejor modelo."
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scikit-learn>=1.5",
+    "joblib>=1.4",
+    "pyarrow>=16.0",
+    "mlflow>=2.16",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "click>=8.1",
+]

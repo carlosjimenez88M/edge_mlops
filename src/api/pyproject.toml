@@ -1,0 +1,21 @@
+[project]
+name = "edge-mlops-api"
+version = "0.2.0"
+description = "Componente api: servicio FastAPI con metricas Prometheus."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "prometheus-client>=0.20",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scikit-learn>=1.5",
+    "joblib>=1.4",
+    "pyarrow>=16.0",
+    "mlflow>=2.16",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "click>=8.1",
+]

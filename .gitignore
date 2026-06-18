@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- edge_mlops ---
+.venv/
+mlruns/
+mlflow.db
+wandb/
+artifacts/*
+!artifacts/.gitkeep
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep

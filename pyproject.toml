@@ -1,0 +1,64 @@
+[project]
+name = "edge-mlops"
+version = "0.2.0"
+description = "Plataforma MLOps de borde (Raspberry Pi) para practicar con el libro de Aurelien Geron, capitulo a capitulo."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Daniel Jimenez" }]
+license = { text = "MIT" }
+
+# Dependencias compartidas por TODOS los componentes (logger, config, MLflow client).
+dependencies = [
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "mlflow>=2.16",
+    "click>=8.1",
+]
+
+# ---------------------------------------------------------------------------
+# Grupos por componente. Cada src/<componente> ademas tiene su propio
+# pyproject.toml (para correrlo aislado con `uv run`), pero aqui se agrupan
+# para crear UN venv raiz con `uv sync --all-groups` (rapido en la Raspberry).
+# ---------------------------------------------------------------------------
+[dependency-groups]
+data = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scikit-learn>=1.5",
+    "pyarrow>=16.0",
+]
+validation = [
+    "scipy>=1.13",
+    "matplotlib>=3.8",
+]
+train = [
+    "scikit-learn>=1.5",
+    "joblib>=1.4",
+]
+sweep = [
+    "wandb>=0.17",
+]
+api = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "prometheus-client>=0.20",
+    "pydantic-settings>=2.3",
+]
+dev = [
+    "pytest>=8.2",
+    "ruff>=0.5",
+    "httpx>=0.27",
+]
+
+[tool.uv]
+# Junta todos los grupos en el venv raiz por defecto.
+default-groups = ["data", "validation", "train", "sweep", "api", "dev"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

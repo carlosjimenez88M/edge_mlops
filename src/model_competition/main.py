@@ -1,0 +1,136 @@
+"""Componente: model_competition.
+
+Entrena varios modelos con el mismo preprocesamiento, los compara con
+validacion cruzada + holdout y selecciona el campeon. Registra cada
+candidato como un run anidado en MLflow y persiste el ganador.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+import click
+import joblib
+import mlflow
+import mlflow.sklearn
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import cross_val_score
+from sklearn.pipeline import Pipeline
+
+from src.common.config import load_config
+from src.common.logging_utils import get_logger, success
+from src.common.mlflow_utils import setup_mlflow
+from src.common.paths import ARTIFACTS_DIR, PROJECT_ROOT
+from src.data_preprocessing.transforms import build_preprocessor
+from src.model_competition.models import (
+    METRIC_LOWER_IS_BETTER,
+    build_estimator,
+    is_better,
+    regression_metrics,
+)
+
+logger = get_logger("model_competition")
+
+
+def _load_splits(config) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
+    processed_dir = PROJECT_ROOT / config.preprocessing.processed_dir
+    train = pd.read_parquet(processed_dir / "train.parquet")
+    test = pd.read_parquet(processed_dir / "test.parquet")
+    target = config.data.target
+    return (
+        train.drop(columns=[target]),
+        train[target],
+        test.drop(columns=[target]),
+        test[target],
+    )
+
+
+@click.command()
+@click.option("--config", "config_path", default=str(PROJECT_ROOT / "config.yaml"))
+def main(config_path: str) -> None:
+    config = load_config(config_path)
+    setup_mlflow(config)
+
+    x_train, y_train, x_test, y_test = _load_splits(config)
+    numeric_features = list(x_train.select_dtypes("number").columns)
+    metric = config.competition.metric
+    lower_better = METRIC_LOWER_IS_BETTER[metric]
+    scoring = {"rmse": "neg_root_mean_squared_error", "mae": "neg_mean_absolute_error", "r2": "r2"}[
+        metric
+    ]
+
+    logger.info("Competencia de %d modelos | metrica de seleccion: %s", len(config.competition.models), metric)
+
+    best_name: str | None = None
+    best_score = np.inf if lower_better else -np.inf
+    leaderboard: list[dict] = []
+
+    with mlflow.start_run(run_name="model_competition") as parent:
+        for name in config.competition.models:
+            with mlflow.start_run(run_name=name, nested=True):
+                pipeline = Pipeline(
+                    steps=[
+                        ("preprocessor", build_preprocessor(numeric_features, config.preprocessing.numeric_strategy)),
+                        ("model", build_estimator(name, config.project.random_state)),
+                    ]
+                )
+                cv_scores = cross_val_score(
+                    pipeline, x_train, y_train, cv=config.competition.cv_folds, scoring=scoring
+                )
+                cv_metric = float(-cv_scores.mean() if scoring.startswith("neg_") else cv_scores.mean())
+
+                pipeline.fit(x_train, y_train)
+                test_metrics = regression_metrics(y_test, pipeline.predict(x_test))
+
+                mlflow.log_param("model", name)
+                mlflow.log_metric(f"cv_{metric}", cv_metric)
+                for k, v in test_metrics.items():
+                    mlflow.log_metric(f"test_{k}", v)
+                mlflow.sklearn.log_model(pipeline, name="model", serialization_format="cloudpickle")
+
+                leaderboard.append({"model": name, f"cv_{metric}": round(cv_metric, 5), **{f"test_{k}": round(v, 5) for k, v in test_metrics.items()}})
+                logger.info("  %-18s cv_%s=%.4f  test_rmse=%.4f  test_r2=%.4f", name, metric, cv_metric, test_metrics["rmse"], test_metrics["r2"])
+
+                if best_name is None or is_better(cv_metric, best_score, metric):
+                    best_score, best_name = cv_metric, name
+
+        # Reentrena el ganador en TODO el train y lo persiste como campeon.
+        winner = Pipeline(
+            steps=[
+                ("preprocessor", build_preprocessor(numeric_features, config.preprocessing.numeric_strategy)),
+                ("model", build_estimator(best_name, config.project.random_state)),
+            ]
+        )
+        winner.fit(x_train, y_train)
+        winner_metrics = regression_metrics(y_test, winner.predict(x_test))
+
+        model_path = ARTIFACTS_DIR / "winner_model.joblib"
+        joblib.dump(winner, model_path)
+        mlflow.sklearn.log_model(winner, name="winner_model", serialization_format="cloudpickle")
+
+        best_info = {
+            "model_name": best_name,
+            "selection_metric": metric,
+            f"cv_{metric}": round(best_score, 5),
+            "test_metrics": {k: round(v, 5) for k, v in winner_metrics.items()},
+            "run_id": parent.info.run_id,
+            "model_uri": f"runs:/{parent.info.run_id}/winner_model",
+            "joblib_path": str(model_path),
+            "numeric_features": numeric_features,
+        }
+        (ARTIFACTS_DIR / "best_model.json").write_text(json.dumps(best_info, indent=2), encoding="utf-8")
+        (ARTIFACTS_DIR / "leaderboard.json").write_text(json.dumps(leaderboard, indent=2), encoding="utf-8")
+        mlflow.log_artifact(str(ARTIFACTS_DIR / "best_model.json"))
+        mlflow.log_artifact(str(ARTIFACTS_DIR / "leaderboard.json"))
+        mlflow.log_param("winner", best_name)
+
+    success(logger, f"Campeon: {best_name} (test R2={winner_metrics['r2']:.4f}, RMSE={winner_metrics['rmse']:.4f})")
+
+
+if __name__ == "__main__":
+    main()

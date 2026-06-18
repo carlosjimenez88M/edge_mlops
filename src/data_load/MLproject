@@ -1,0 +1,9 @@
+name: data_load
+
+# Por defecto el orquestador lo corre con --env-manager local (venv raiz).
+# Para correrlo AISLADO con su propio venv uv:  cd src/data_load && uv run python main.py
+entry_points:
+  main:
+    parameters:
+      config: { type: str, default: ../../config.yaml }
+    command: "python main.py --config {config}"

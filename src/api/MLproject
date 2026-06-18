@@ -1,0 +1,7 @@
+name: api
+
+entry_points:
+  serve:
+    parameters:
+      config: { type: str, default: ../../config.yaml }
+    command: "python main.py"

@@ -1,0 +1,79 @@
+# =============================================================================
+# CI/CD que corre en la RASPBERRY PI (self-hosted runner).
+# Flujo: push -> prueba -> entrena/registra -> build -> despliega -> monitorea.
+#
+# Requisitos en la Pi (ver docs/RASPBERRY_PI_SETUP.md):
+#   - GitHub Actions self-hosted runner con labels: [self-hosted, rpi]
+#   - uv y docker instalados
+#   - secret WANDB_API_KEY (si vas a correr el sweep en CI)
+# =============================================================================
+name: edge-mlops-cicd
+
+on:
+  push:
+    branches: ["master", "main", "chapter-*"]
+  workflow_dispatch:
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: [self-hosted, rpi]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sincronizar entorno (uv)
+        run: uv sync --all-groups
+      - name: Lint (ruff)
+        run: uv run ruff check src orchestrator.py
+      - name: Tests
+        run: uv run pytest -q
+
+  train:
+    needs: test
+    runs-on: [self-hosted, rpi]
+    env:
+      wandb_api_key: ${{ secrets.WANDB_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sincronizar entorno (uv)
+        run: uv sync --all-groups
+      - name: Ejecutar pipeline (orquestador)
+        run: uv run python orchestrator.py
+      - name: Publicar artefactos
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-artifacts-${{ github.sha }}
+          path: |
+            artifacts/
+            mlflow.db
+
+  deploy:
+    needs: train
+    runs-on: [self-hosted, rpi]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir y desplegar stack (api + prometheus + grafana)
+        run: docker compose up -d --build
+      - name: Esperar a que la API este lista
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health; then echo "API arriba"; exit 0; fi
+            sleep 2
+          done
+          echo "La API no respondio a tiempo"; docker compose logs api; exit 1
+
+  monitor:
+    needs: deploy
+    runs-on: [self-hosted, rpi]
+    steps:
+      - name: Smoke test de prediccion
+        run: |
+          curl -sf -X POST http://localhost:8000/predict \
+            -H "Content-Type: application/json" \
+            -d '{"MedInc":8.3,"HouseAge":41,"AveRooms":6.98,"AveBedrms":1.02,"Population":322,"AveOccup":2.55,"Latitude":37.88,"Longitude":-122.23}'
+      - name: Verificar metricas Prometheus
+        run: curl -sf http://localhost:8000/metrics | grep edge_predictions_total
+      - name: Verificar Grafana
+        run: curl -sf http://localhost:3000/api/health

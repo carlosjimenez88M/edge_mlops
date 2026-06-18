@@ -1,0 +1,56 @@
+# Stack de servicio + monitoreo para la Raspberry Pi.
+#   api        -> FastAPI sirviendo el modelo registrado (/predict, /metrics)
+#   prometheus -> recoge metricas de la api
+#   grafana    -> dashboards (datasource + dashboard ya provisionados)
+#
+# Levantar:  docker compose up -d --build
+# La api monta el repo para leer mlflow.db, mlruns/ y artifacts/ generados
+# por la pipeline (corre la pipeline ANTES de levantar la api).
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: edge-mlops-api:latest
+    container_name: edge-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./mlruns:/app/mlruns
+      - ./artifacts:/app/artifacts
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: edge-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: edge-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
