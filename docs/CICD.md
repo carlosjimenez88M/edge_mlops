@@ -1,8 +1,19 @@
 # CI/CD en la Raspberry Pi
 
-El workflow `.github/workflows/cicd.yml` materializa el ciclo como un **grafo de pasos**:
-cada componente es un job independiente (una caja en el grafo de Actions), encadenados con
-`needs:`.
+Hay **un workflow por capítulo** en la pestaña Actions (entradas separadas), pero **una sola
+definición** del pipeline para no duplicar nada:
+
+- `.github/workflows/chapter-02.yml` → "Capítulo 2 · MLOps (California Housing)"
+- `.github/workflows/chapter-03.yml` → "Capítulo 3 · MLOps (MNIST)"
+- `.github/workflows/_pipeline.yml` → pipeline **reutilizable** (`workflow_call`) con las 9 cajas.
+
+Cada workflow de capítulo es fino: invoca al pipeline reutilizable pasándole su rama
+(`chapter_ref`). El pipeline hace `checkout` de esa rama, así corre el código y el
+`config.yaml` del capítulo. Para añadir el capítulo N, copia un `chapter-0X.yml` y cambia
+`chapter_ref` (ver `docs/ADD_A_CHAPTER.md`).
+
+El ciclo es un **grafo de pasos**: cada componente es un job independiente (una caja),
+encadenados con `needs:`.
 
 ```
 test → data_load → data_validation → data_preprocessing →
@@ -24,14 +35,14 @@ el modelo se entrena y se sirve en el mismo hardware de borde.
 
 ## Disparadores
 
-- **Solo manual** (`workflow_dispatch`): se ejecuta cuando le das **"Run workflow"** en la
-  pestaña **Actions** de GitHub. **No corre con push.**
-- Al lanzarlo eliges la **rama** (por ejemplo `chapter-03`) y, con el input `run_sweep`,
-  decides si se ejecuta el sweep de W&B en esa corrida.
-- `concurrency` cancela corridas anteriores de la misma rama.
+- **Solo manual** (`workflow_dispatch`): en la pestaña **Actions** eliges el workflow del
+  capítulo ("Capítulo 2…" o "Capítulo 3…") y pulsas **"Run workflow"**. **No corre con push.**
+- El input `run_sweep` decide si se ejecuta el sweep de W&B en esa corrida.
+- No necesitas elegir rama: cada workflow ya apunta a la suya (`chapter_ref`).
 
-> Para que el botón "Run workflow" aparezca, el workflow debe existir en la rama por
-> defecto (`master`); luego puedes ejecutarlo apuntando a cualquier rama.
+> Los tres archivos de workflow viven en la rama por defecto (`master`) para que aparezcan
+> en el sidebar y sean ejecutables. El reutilizable (`_pipeline.yml`) no tiene botón propio
+> (solo `workflow_call`).
 
 ## Jobs (una caja cada uno)
 

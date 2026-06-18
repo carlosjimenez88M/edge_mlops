@@ -1,36 +1,27 @@
 # =============================================================================
-# CI/CD en la RASPBERRY PI (self-hosted runner) — pipeline por PASOS.
+# Pipeline REUTILIZABLE (workflow_call). No se ejecuta solo: lo invocan los
+# workflows por capítulo (chapter-02.yml, chapter-03.yml) pasándole la rama.
 #
-# Cada componente es un JOB independiente: en el grafo de Actions veras una
-# caja por paso, encadenadas, empezando por "Cargar datos" y terminando en
-# monitoreo. El flujo completo:
+# Así evitamos duplicar las 9 cajas en cada capítulo: una sola definición,
+# parametrizada por `chapter_ref`. Cada job hace checkout de ESA rama, de modo
+# que se ejecuta el código y el config.yaml del capítulo correspondiente.
 #
-#   test → data_load → data_validation → data_preprocessing →
-#   model_competition → sweep → register → build_deploy → monitor
-#
-# DISPARO MANUAL: solo corre con "Run workflow" en la pestaña Actions
-# (workflow_dispatch). Eliges la rama y, con run_sweep, activas el sweep W&B.
-#
-# IMPORTANTE (reproducibilidad en la Pi):
-#   - Pensado para UN runner self-hosted en la Raspberry (labels: self-hosted, rpi).
-#   - Los jobs comparten el WORKSPACE del runner (checkout con clean: false), de
-#     modo que los artefactos generados (data/, artifacts/, mlflow.db, mlruns/)
-#     pasan de un paso al siguiente SIN subirlos/bajarlos por la red.
-#   - Requisitos en la Pi: uv y docker. Secret WANDB_API_KEY si usas el sweep.
+# Corre en la Raspberry (self-hosted, rpi); los jobs comparten el workspace
+# del runner (clean: false) para pasar artefactos sin red. Pensado para UN runner.
 # =============================================================================
-name: edge-mlops-cicd
+name: "· pipeline (reusable)"
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
+      chapter_ref:
+        description: "Rama del capítulo a ejecutar (p. ej. chapter-03)"
+        type: string
+        required: true
       run_sweep:
         description: "Activar el sweep de W&B (60 intentos)"
         type: boolean
         default: false
-
-concurrency:
-  group: cicd-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   wandb_api_key: ${{ secrets.WANDB_API_KEY }}
@@ -41,6 +32,8 @@ jobs:
     runs-on: [self-hosted, rpi]
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.chapter_ref }}
       - run: uv sync --all-groups
       - run: uv run ruff check src orchestrator.py
       - run: uv run pytest -q
@@ -51,7 +44,9 @@ jobs:
     runs-on: [self-hosted, rpi]
     steps:
       - uses: actions/checkout@v6
-        with: { clean: false }
+        with:
+          ref: ${{ inputs.chapter_ref }}
+          clean: false
       - run: uv sync --all-groups
       - run: uv run python orchestrator.py --only data_load
 
@@ -61,7 +56,9 @@ jobs:
     runs-on: [self-hosted, rpi]
     steps:
       - uses: actions/checkout@v6
-        with: { clean: false }
+        with:
+          ref: ${{ inputs.chapter_ref }}
+          clean: false
       - run: uv sync --all-groups
       - run: uv run python orchestrator.py --only data_validation
       - uses: actions/upload-artifact@v7
@@ -75,7 +72,9 @@ jobs:
     runs-on: [self-hosted, rpi]
     steps:
       - uses: actions/checkout@v6
-        with: { clean: false }
+        with:
+          ref: ${{ inputs.chapter_ref }}
+          clean: false
       - run: uv sync --all-groups
       - run: uv run python orchestrator.py --only data_preprocessing
 
@@ -85,7 +84,9 @@ jobs:
     runs-on: [self-hosted, rpi]
     steps:
       - uses: actions/checkout@v6
-        with: { clean: false }
+        with:
+          ref: ${{ inputs.chapter_ref }}
+          clean: false
       - run: uv sync --all-groups
       - run: uv run python orchestrator.py --only model_competition
       - uses: actions/upload-artifact@v7
@@ -101,9 +102,10 @@ jobs:
     runs-on: [self-hosted, rpi]
     steps:
       - uses: actions/checkout@v6
-        with: { clean: false }
+        with:
+          ref: ${{ inputs.chapter_ref }}
+          clean: false
       - run: uv sync --all-groups
-      # Corre siempre; si run_sweep es false, el componente se omite solo (caja verde).
       - run: uv run python orchestrator.py --only sweep ${{ inputs.run_sweep && '--enable-sweep' || '' }}
 
   register:
@@ -112,7 +114,9 @@ jobs:
     runs-on: [self-hosted, rpi]
     steps:
       - uses: actions/checkout@v6
-        with: { clean: false }
+        with:
+          ref: ${{ inputs.chapter_ref }}
+          clean: false
       - run: uv sync --all-groups
       - run: uv run python orchestrator.py --only register
 
@@ -122,7 +126,9 @@ jobs:
     runs-on: [self-hosted, rpi]
     steps:
       - uses: actions/checkout@v6
-        with: { clean: false }
+        with:
+          ref: ${{ inputs.chapter_ref }}
+          clean: false
       - name: Construir y levantar el stack (api + prometheus + grafana)
         run: docker compose up -d --build
       - name: Esperar a que la API este lista
@@ -139,7 +145,9 @@ jobs:
     runs-on: [self-hosted, rpi]
     steps:
       - uses: actions/checkout@v6
-        with: { clean: false }
+        with:
+          ref: ${{ inputs.chapter_ref }}
+          clean: false
       - run: uv sync --all-groups
       - name: Smoke test de prediccion (imagen/fila real del test set)
         run: uv run python scripts/smoke_predict.py
